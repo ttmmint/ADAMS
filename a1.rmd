@@ -1,0 +1,256 @@
+---
+title: "Part B: Synthetic Data"
+author: "Group 11"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+# 1. Introduction
+
+In this part, we generate synthetic data for the proposed study.
+The study investigates whether adding a human demonstration to a text
+instruction affects the time an embodied AI robot needs to complete a
+manipulation task.
+
+The **independent variable** is the instruction condition:
+- Text-only
+- Text + demonstration
+
+The **dependent variable** is task completion time, measured in seconds.
+
+We generate two datasets:
+
+1. A dataset in which a true effect exists.
+2. A dataset in which the null hypothesis is true.
+
+The effect of the human demonstration is controlled by an adjustable
+parameter called `effect_size`.
+
+# 2. Load packages
+
+```{r setup, message=FALSE, warning=FALSE}
+# Load the packages needed for data manipulation and visualisation
+library(tidyverse)
+```
+
+# 3. Set seed and Define simulation parameters
+```{r}
+# Set a seed to for reproducibility
+set.seed(42)
+
+# Total number of robot trials
+N <- 100
+
+# Number of trials in each experimental condition
+n_per_group <- N / 2
+
+# Mean completion time for the text-only condition, in seconds
+mean_text <- 30
+
+# Standard deviation of completion time within each condition, in seconds
+sd_completion <- 5
+
+# True effect of adding a human demonstration
+# A negative value means that the demonstration is expected to
+# reduce completion time
+# For example, -3 means that the demonstration reduces the
+# population mean completion time by 3 seconds
+effect_size <- -3
+
+# Mean completion time in the demonstration condition
+mean_demo <- mean_text + effect_size
+```
+
+# 4.1 Simulate the dataset with a true effect
+```{r}
+# Generate completion times for robots receiving the text-only instruction
+# rnorm() draws random observations from a normal distribution.
+# The distribution has a mean of 30 seconds and an SD of 5 seconds
+text_effect <- rnorm(
+  n = n_per_group,
+  mean = mean_text,
+  sd = sd_completion
+)
+
+# Generate completion times for robots receiving both the text instruction
+# and a human demonstration
+# The mean is lower by the specified effect size (-3 seconds)
+demo_effect <- rnorm(
+  n = n_per_group,
+  mean = mean_demo,
+  sd = sd_completion
+)
+
+# Combine the two groups into one data frame
+data_effect <- tibble(
+  condition = c(
+    rep("Text-only", n_per_group),
+    rep("Text + demonstration", n_per_group)
+  ),
+  completion_time = c(
+    text_effect,
+    demo_effect
+  )
+)
+
+# Completion time cannot be negative in reality
+# We therefore replace any negative simulated values with zero
+data_effect <- data_effect %>%
+  mutate(
+    completion_time = pmax(completion_time, 0)
+  )
+
+# Display the first few observations
+head(data_effect)
+```
+
+# 4.2 Inspect the simulated effect dataset
+```{r}
+# Calculate descriptive statistics for each experimental condition
+data_effect %>%
+  group_by(condition) %>%
+  summarise(
+    n = n(),
+    mean = mean(completion_time),
+    sd = sd(completion_time),
+    min = min(completion_time),
+    max = max(completion_time)
+  )
+```
+
+# 5.1 Simulate the dataset under null hypothesis
+```{r}
+# For the null dataset, we set the true effect to zero, which means that 
+# the population mean completion time is identical in the two conditions
+null_effect <- 0
+
+# Calculate the mean completion time for the demonstration condition
+# under the null hypothesis
+mean_demo_null <- mean_text + null_effect
+
+# Generate completion times for the text-only condition
+text_null <- rnorm(
+  n = n_per_group,
+  mean = mean_text,
+  sd = sd_completion
+)
+
+# Generate completion times for the demonstration condition
+# Since null_effect = 0, both groups have the same population mean
+demo_null <- rnorm(
+  n = n_per_group,
+  mean = mean_demo_null,
+  sd = sd_completion
+)
+
+# Combine the two groups into one data frame
+data_null <- tibble(
+  condition = c(
+    rep("Text-only", n_per_group),
+    rep("Text + demonstration", n_per_group)
+  ),
+  completion_time = c(
+    text_null,
+    demo_null
+  )
+)
+
+# Ensure that completion times cannot be negative
+data_null <- data_null %>%
+  mutate(
+    completion_time = pmax(completion_time, 0)
+  )
+
+# Display the first few observations
+head(data_null)
+```
+
+# 5.2 Inspect the null dataset
+```{r}
+# Calculate descriptive statistics for each condition:
+# Even though the population means are identical, the sample means
+# will usually differ slightly because of random sampling variation
+data_null %>%
+  group_by(condition) %>%
+  summarise(
+    n = n(),
+    mean = mean(completion_time),
+    sd = sd(completion_time),
+    min = min(completion_time),
+    max = max(completion_time)
+  )
+```
+# 6. Visualize the dataset with a true effect
+```{r}
+# Plot the distribution of completion times in the two conditions:
+
+# Individual observations are shown as points
+# the boxplots summarise the distribution within each condition.
+ggplot(
+  data_effect,
+  aes(
+    x = condition,
+    y = completion_time
+  )
+) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.6) +
+  labs(
+    title = "Simulated Completion Time: True Effect",
+    x = "Instruction condition",
+    y = "Completion time (seconds)"
+  ) +
+  theme_minimal()
+```
+
+# 7. Visualize the null dataset
+```{r}
+# Visualise the completion times under the null hypothesis:
+# The two groups should overlap substantially because their population
+# means are identical.
+ggplot(
+  data_null,
+  aes(
+    x = condition,
+    y = completion_time
+  )
+) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.6) +
+  labs(
+    title = "Simulated Completion Time: Null Effect",
+    x = "Instruction condition",
+    y = "Completion time (seconds)"
+  ) +
+  theme_minimal()
+```
+
+# 10. Compare the two conditions statistically
+```{r}
+# Perform the planned independent-samples two-sided t-test
+# on the dataset containing a true effect:
+# The test compares mean completion time between the two
+# instruction conditions
+t_test_effect <- t.test(
+  completion_time ~ condition,
+  data = data_effect,
+  alternative = "two.sided"
+)
+
+# Display the results.
+t_test_effect
+```
+
+```{r}
+# Perform the same planned two-sided t-test on the null dataset:
+# Here the true population effect is zero, so any observed
+# difference between the sample means is due to random variation.
+t_test_null <- t.test(
+  completion_time ~ condition,
+  data = data_null,
+  alternative = "two.sided"
+)
+
+# Display the results.
+t_test_null
+```
