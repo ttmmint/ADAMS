@@ -1,10 +1,11 @@
 ---
-title: "Part B: Synthetic Data"
+title: "Assignment 1"
 author: "Group 11"
 date: "`r Sys.Date()`"
-output: pdf_document
+output: html_document
 ---
 
+# Part B: Synthetic Data
 # 1. Introduction
 
 In this part, we generate synthetic data for the proposed study.
@@ -75,39 +76,39 @@ text_effect <- rnorm(
 # Generate completion times for robots receiving both the text instruction
 # and a human demonstration
 # The mean is lower by the specified effect size (-3 seconds)
-demo_effect <- rnorm(
+demo_alternative <- rnorm(
   n = n_per_group,
   mean = mean_demo,
   sd = sd_completion
 )
 
 # Combine the two groups into one data frame
-data_effect <- tibble(
+data_alternative <- tibble(
   condition = c(
     rep("Text-only", n_per_group),
     rep("Text + demonstration", n_per_group)
   ),
   completion_time = c(
     text_effect,
-    demo_effect
+    demo_alternative
   )
 )
 
 # Completion time cannot be negative in reality
 # We therefore replace any negative simulated values with zero
-data_effect <- data_effect %>%
+data_alternative <- data_alternative %>%
   mutate(
     completion_time = pmax(completion_time, 0)
   )
 
 # Display the first few observations
-head(data_effect)
+head(data_alternative)
 ```
 
 # 4.2 Inspect the simulated effect dataset
 ```{r}
 # Calculate descriptive statistics for each experimental condition
-data_effect %>%
+data_alternative %>%
   group_by(condition) %>%
   summarise(
     n = n(),
@@ -187,7 +188,7 @@ data_null %>%
 # Individual observations are shown as points
 # the boxplots summarise the distribution within each condition.
 ggplot(
-  data_effect,
+  data_alternative,
   aes(
     x = condition,
     y = completion_time
@@ -225,7 +226,7 @@ ggplot(
   theme_minimal()
 ```
 
-# 10. Compare the two conditions statistically
+# 8. Compare the two conditions statistically
 ```{r}
 # Perform the planned independent-samples two-sided t-test
 # on the dataset containing a true effect:
@@ -233,7 +234,7 @@ ggplot(
 # instruction conditions
 t_test_effect <- t.test(
   completion_time ~ condition,
-  data = data_effect,
+  data = data_alternative,
   alternative = "two.sided"
 )
 
@@ -253,4 +254,381 @@ t_test_null <- t.test(
 
 # Display the results.
 t_test_null
+```
+
+
+```{r}
+# Calculate the observed mean difference explicitly
+# The effect is defined as:
+# mean(Text + demonstration) - mean(Text-only).
+effect_estimate <- mean(
+  data_alternative$completion_time[data_alternative$condition == "Text + demonstration"]
+) -
+  mean(
+    data_alternative$completion_time[data_alternative$condition == "Text-only"]
+  )
+
+# Calculate the same observed effect for the null dataset.
+effect_estimate_null <- mean(
+  data_null$completion_time[data_null$condition == "Text + demonstration"]
+) -
+  mean(
+    data_null$completion_time[data_null$condition == "Text-only"]
+  )
+
+effect_estimate
+effect_estimate_null
+```
+
+
+# Part C: Simulated Data
+# 1. Introduction
+
+```{r}
+# Set the number of simulated studies
+n_studies <- 10000
+```
+
+# 2. Alternative hypothesis simulation
+```{r}
+# Create an empty data frame to store the results from every simulated study
+alternative_results <- tibble(
+  study = integer(),
+  p_value = numeric(),
+  estimated_effect = numeric()
+)
+
+# Repeat the complete study many times
+for (i in 1:n_studies) {
+  
+  # Generate 50 completion times for the Text-only condition
+  text_times <- rnorm(
+    n = n_per_group,
+    mean = mean_text,
+    sd = sd_completion
+  )
+  
+  # Generate 50 completion times for the demonstration condition
+  # The true mean is 30 + (-3) = 27 seconds.
+  demo_times <- rnorm(
+    n = n_per_group,
+    mean = mean_text + effect_size,
+    sd = sd_completion
+  )
+  
+  # Prevent physically impossible negative completion times
+  text_times <- pmax(text_times, 0)
+  demo_times <- pmax(demo_times, 0)
+  
+  # Combine the two groups into one dataset
+  simulated_data <- tibble(
+    condition = c(
+      rep("Text-only", n_per_group),
+      rep("Text + demonstration", n_per_group)
+    ),
+    completion_time = c(
+      text_times,
+      demo_times
+    )
+  )
+  
+  # Run the planned two-sided Welch t-test
+  test_result <- t.test(
+    completion_time ~ condition,
+    data = simulated_data,
+    alternative = "two.sided"
+  )
+  
+  # Calculate the estimated effect explicitly as:
+  # mean(Text + demonstration) - mean(Text-only).
+  estimated_effect <- mean(demo_times) - mean(text_times)
+  
+  # Store the p-value and estimated effect from this study
+  alternative_results <- bind_rows(
+    alternative_results,
+    tibble(
+      study = i,
+      p_value = test_result$p.value,
+      estimated_effect = estimated_effect
+    )
+  )
+}
+```
+
+# 3. Null hypothesis simulation
+```{r}
+# Create an empty data frame to store the results from every simulated study
+null_results <- tibble(
+  study = integer(),
+  p_value = numeric(),
+  estimated_effect = numeric()
+)
+
+# Repeat the complete study many times under the null hypothesis
+for (i in 1:n_studies) {
+  
+  # Generate 50 completion times for the Text-only condition
+  text_times <- rnorm(
+    n = n_per_group,
+    mean = mean_text,
+    sd = sd_completion
+  )
+  
+  # Generate 50 completion times for the demonstration condition
+  # Because the true effect is zero, its population mean is also 30
+  demo_times <- rnorm(
+    n = n_per_group,
+    mean = mean_text + null_effect,
+    sd = sd_completion
+  )
+  
+  # Prevent physically impossible negative completion times.
+  text_times <- pmax(text_times, 0)
+  demo_times <- pmax(demo_times, 0)
+  
+  # Combine both conditions into one dataset.
+  simulated_data <- tibble(
+    condition = c(
+      rep("Text-only", n_per_group),
+      rep("Text + demonstration", n_per_group)
+    ),
+    completion_time = c(
+      text_times,
+      demo_times
+    )
+  )
+  
+  # Run the same two-sided Welch t-test.
+  test_result <- t.test(
+    completion_time ~ condition,
+    data = simulated_data,
+    alternative = "two.sided"
+  )
+  
+  # Calculate the observed effect for this simulated study.
+  estimated_effect <- mean(demo_times) - mean(text_times)
+  
+  # Store the p-value and estimated effect.
+  null_results <- bind_rows(
+    null_results,
+    tibble(
+      study = i,
+      p_value = test_result$p.value,
+      estimated_effect = estimated_effect
+    )
+  )
+}
+```
+
+# 4. Type 1 Error, Type 2 Error and Power
+
+```{r}
+# Calculate the Type I error rate:
+# Under the null hypothesis, a significant result (p < .05)
+# represents a Type I error
+type_I_error <- mean(null_results$p_value < 0.05)
+
+type_I_error
+```
+
+```{r}
+# Calculate the Type II error rate:
+# This is the proportion of studies under the alternative
+# hypothesis where the true effect was not detected.
+type_II_error <- mean(alternative_results$p_value >= 0.05)
+
+type_II_error
+```
+
+```{r}
+# Calculate statistical power:
+# Under the alternative hypothesis, a significant result
+# means that the true effect was detected.
+power <- mean(alternative_results$p_value < 0.05)
+
+power
+```
+
+```{r}
+# check: Type II error and power should add up to approximately 1
+type_II_error + power
+```
+
+```{r}
+# Create a summary table of the main simulation results:
+simulation_summary <- tibble(
+  measure = c(
+    "Type I error",
+    "Type II error",
+    "Statistical power"
+  ),
+  estimate = c(
+    type_I_error,
+    type_II_error,
+    power
+  )
+)
+
+simulation_summary
+```
+
+# 5. P-value distributions
+
+```{r}
+# Plot the distribution of p-values under the alternative hypothesis.
+# The dashed line marks the significance threshold of 0.05.
+ggplot(alternative_results, aes(x = p_value)) +
+  geom_histogram(bins = 20) +
+  geom_vline(
+    xintercept = 0.05,
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "Distribution of p-values Under the Alternative Hypothesis",
+    x = "p-value",
+    y = "Number of simulated studies"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# Plot the distribution of p-values under the null hypothesis
+# The dashed line marks the significance threshold of 0.05:
+ggplot(null_results, aes(x = p_value)) +
+  geom_histogram(bins = 20) +
+  geom_vline(
+    xintercept = 0.05,
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "Distribution of p-values Under the Null Hypothesis",
+    x = "p-value",
+    y = "Number of simulated studies"
+  ) +
+  theme_minimal()
+```
+
+# 6. Estimated-effects distributions
+```{r}
+# Plot the distribution of estimated effects across simulated studies
+# The vertical line shows the true effect of -3 seconds:
+ggplot(alternative_results, aes(x = estimated_effect)) +
+  geom_histogram(bins = 30) +
+  geom_vline(
+    xintercept = -3,
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "Distribution of Estimated Effects Across Simulated Studies",
+    x = "Estimated effect (seconds)",
+    y = "Number of simulated studies"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# Plot the distribution of estimated effects under the null hypothesis
+# The true effect is zero, so the distribution should be centred
+# approximately around zero
+ggplot(null_results, aes(x = estimated_effect)) +
+  geom_histogram(bins = 30) +
+  geom_vline(
+    xintercept = 0,
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "Distribution of Estimated Effects Under the Null Hypothesis",
+    x = "Estimated effect (seconds)",
+    y = "Number of simulated studies"
+  ) +
+  theme_minimal()
+```
+
+# 7. Different sample sizes
+```{r}
+sample_sizes <- c(25, 100, 200, 500)
+
+# Number of studies used for each sample size.
+n_power_studies <- 2000
+
+# Create an empty data frame to store the results.
+power_by_n <- tibble(
+  n_per_group = integer(),
+  power = numeric()
+)
+
+# Repeat the simulation for each sample size.
+for (n_current in sample_sizes) {
+  
+  # Store whether each simulated study produced a significant result.
+  significant_results <- numeric(n_power_studies)
+  
+  for (i in 1:n_power_studies) {
+    
+    # Generate Text-only completion times.
+    text_times <- rnorm(
+      n = n_current,
+      mean = mean_text,
+      sd = sd_completion
+    )
+    
+    # Generate demonstration completion times under
+    # the true effect of -3 seconds.
+    demo_times <- rnorm(
+      n = n_current,
+      mean = mean_text + effect_size,
+      sd = sd_completion
+    )
+    
+    # Prevent negative completion times.
+    text_times <- pmax(text_times, 0)
+    demo_times <- pmax(demo_times, 0)
+    
+    # Combine both groups.
+    simulated_data <- tibble(
+      condition = c(
+        rep("Text-only", n_current),
+        rep("Text + demonstration", n_current)
+      ),
+      completion_time = c(
+        text_times,
+        demo_times
+      )
+    )
+    
+    # Run the two-sided Welch t-test.
+    test_result <- t.test(
+      completion_time ~ condition,
+      data = simulated_data,
+      alternative = "two.sided"
+    )
+    
+    # Record whether the result was statistically significant.
+    significant_results[i] <- test_result$p.value < 0.05
+  }
+  
+  # Calculate power for this sample size.
+  power_by_n <- bind_rows(
+    power_by_n,
+    tibble(
+      n_per_group = n_current,
+      power = mean(significant_results)
+    )
+  )
+}
+
+power_by_n
+```
+
+```{r}
+# Visualise how statistical power changes with sample size.
+ggplot(power_by_n, aes(x = n_per_group, y = power)) +
+  geom_point() +
+  geom_line() +
+  labs(
+    title = "Statistical Power as a Function of Sample Size",
+    x = "Sample size per condition",
+    y = "Statistical power"
+  ) +
+  theme_minimal()
 ```
