@@ -201,7 +201,10 @@ ggplot(
     x = "Instruction condition",
     y = "Completion time (seconds)"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 20)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
 ```
 
 # 7. Visualize the null dataset
@@ -223,7 +226,10 @@ ggplot(
     x = "Instruction condition",
     y = "Completion time (seconds)"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 20)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
 ```
 
 # 8. Compare the two conditions statistically
@@ -283,13 +289,172 @@ effect_estimate_null
 
 # Part C: Simulated Data
 # 1. Introduction
+In Part B, two simulated datasets were generated to represent two
+possible situations: one in which adding a human demonstration has a
+true effect on task completion time, and one in which there is no true
+effect. In this part, the statistical analysis is first applied to
+these two datasets.
+
+The analysis uses a two-sided Welch two-sample t-test to compare mean
+completion time between the text-only and text + demonstration
+conditions. The mean difference is defined as the mean completion
+time in the demonstration condition minus the mean completion time in
+the text-only condition.
+
+The analysis is then **repeated over 10,000 independently simulated
+studies**. This allows us to examine how much the estimated effect and
+p-value vary from study to study, and to estimate the Type I error
+rate, Type II error rate, and statistical power of the test.
+
+# 2. Assumption check
+```{r setup, message=FALSE, warning=FALSE}
+# load the packages for drawing better qqplot
+library(qqplotr)
+```
+
+# 2.1 Histogram and QQplot for Alternative dataset
+```{r}
+model_alternative <- lm(
+  completion_time ~ condition,
+  data = data_alternative
+)
+
+data_alternative$residuals <- residuals(model_alternative)
+```
+
+```{r}
+ggplot(
+  data_alternative,
+  aes(x = residuals)
+) +
+  geom_histogram(bins = 20) +
+  labs(
+    title = "Histogram of residuals: Alternative dataset",
+    x = "Residuals",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(
+  data_alternative,
+  aes(sample = residuals)
+) +
+  stat_qq(color = "lightcoral", size = 2) +
+  stat_qq_line(color = "blue", linewidth = 0.8) +
+  labs(
+    title = "Q-Q plot of residuals: Alternative dataset",
+    x = "normal quantiles",
+    y = "sample quantiles"
+  ) +
+  theme_minimal() +
+  theme(title = element_text(size = 20)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
+```
+## The result is out of our expectation because both the QQ-plot and Histogram
+## Shows that the residuals are not normally distributed
+
+## So we tried to check the distribution of both conditions on completion times
+
+```{r}
+data_alternative |>
+  dplyr::group_by(condition) |>
+  dplyr::summarise(
+    n = dplyr::n(),
+    mean = mean(completion_time),
+    sd = sd(completion_time),
+    median = median(completion_time),
+    IQR = IQR(completion_time)
+  )
+```
+
+## Then we check if log transformation works
+## Assumed not work because the data is not right-skewed
+## but heavy-tailed in both sides
+```{r}
+hist(data_alternative$completion_time)
+hist(log(data_alternative$completion_time))
+```
+
+```{r}
+model_log <- lm(
+  log(completion_time) ~ condition,
+  data = data_alternative
+)
+
+residuals_log = residuals(model_log)
+ggplot(
+  data.frame(residuals = residuals_log),
+  aes(sample = residuals)
+) +
+  stat_qq(color = "lightcoral", size = 2) +
+  stat_qq_line(color = "blue", linewidth = 0.8) +
+  labs(
+    title = "Q-Q plot of residuals: Logged Times",
+    x = "normal quantiles",
+    y = "sample quantiles"
+  ) +
+  theme_minimal() +
+  theme(title = element_text(size = 20)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
+```
+
+## The result shows log transformation makes the data even more right-skewed
+## and the distribution of residuals is not improved
+
+# 2.2 The same check for null dataset
+```{r}
+model_null <- lm(completion_time ~ condition, data = data_null)
+
+data_null$residuals <- residuals(model_null)
+```
+
+```{r}
+ggplot(
+  data_null,
+  aes(x = residuals)
+) +
+  geom_histogram(bins = 20) +
+  labs(
+    title = "Histogram of residuals: Null dataset",
+    x = "Residuals",
+    y = "Count"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(
+  data_null,
+  aes(sample = residuals)
+) +
+  stat_qq() +
+  stat_qq(color = "lightcoral", size = 2) +
+  stat_qq_line(color = "blue", linewidth = 0.8) +
+  labs(
+    title = "Q-Q plot of residuals: Null dataset",
+    x = "normal quantiles",
+    y = "sample quantiles"
+  ) +
+  theme_minimal() +
+  theme(title = element_text(size = 20)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
+```
+## Aagin, not normally distributed
+
+# 3. Simulation
 
 ```{r}
 # Set the number of simulated studies
+set.seed(123)
 n_studies <- 10000
 ```
 
-# 2. Alternative hypothesis simulation
+# 3.1 Alternative hypothesis simulation
 ```{r}
 # Create an empty data frame to store the results from every simulated study
 alternative_results <- tibble(
@@ -355,7 +520,7 @@ for (i in 1:n_studies) {
 }
 ```
 
-# 3. Null hypothesis simulation
+# 3.2 Null hypothesis simulation
 ```{r}
 # Create an empty data frame to store the results from every simulated study
 null_results <- tibble(
@@ -478,7 +643,8 @@ simulation_summary
 # Plot the distribution of p-values under the alternative hypothesis.
 # The dashed line marks the significance threshold of 0.05.
 ggplot(alternative_results, aes(x = p_value)) +
-  geom_histogram(bins = 20) +
+  geom_histogram(bins = 20,
+                 fill = "blue") +
   geom_vline(
     xintercept = 0.05,
     linetype = "dashed"
@@ -488,14 +654,18 @@ ggplot(alternative_results, aes(x = p_value)) +
     x = "p-value",
     y = "Number of simulated studies"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 15)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
 ```
 
 ```{r}
 # Plot the distribution of p-values under the null hypothesis
 # The dashed line marks the significance threshold of 0.05:
 ggplot(null_results, aes(x = p_value)) +
-  geom_histogram(bins = 20) +
+  geom_histogram(bins = 20,
+                 fill = "blue") +
   geom_vline(
     xintercept = 0.05,
     linetype = "dashed"
@@ -505,7 +675,10 @@ ggplot(null_results, aes(x = p_value)) +
     x = "p-value",
     y = "Number of simulated studies"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 18)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
 ```
 
 # 6. Estimated-effects distributions
@@ -513,7 +686,8 @@ ggplot(null_results, aes(x = p_value)) +
 # Plot the distribution of estimated effects across simulated studies
 # The vertical line shows the true effect of -3 seconds:
 ggplot(alternative_results, aes(x = estimated_effect)) +
-  geom_histogram(bins = 30) +
+  geom_histogram(bins = 30,
+                 fill = "blue") +
   geom_vline(
     xintercept = -3,
     linetype = "dashed"
@@ -523,7 +697,16 @@ ggplot(alternative_results, aes(x = estimated_effect)) +
     x = "Estimated effect (seconds)",
     y = "Number of simulated studies"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 15)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
+```
+
+```{r}
+mean(alternative_results$estimated_effect)
+sd(alternative_results$estimated_effect)
+quantile(alternative_results$estimated_effect, c(.025, .975))
 ```
 
 ```{r}
@@ -531,7 +714,8 @@ ggplot(alternative_results, aes(x = estimated_effect)) +
 # The true effect is zero, so the distribution should be centred
 # approximately around zero
 ggplot(null_results, aes(x = estimated_effect)) +
-  geom_histogram(bins = 30) +
+  geom_histogram(bins = 30,
+                 fill = "blue") +
   geom_vline(
     xintercept = 0,
     linetype = "dashed"
@@ -541,7 +725,10 @@ ggplot(null_results, aes(x = estimated_effect)) +
     x = "Estimated effect (seconds)",
     y = "Number of simulated studies"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 15)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
 ```
 
 # 7. Different sample sizes
@@ -624,11 +811,14 @@ power_by_n
 # Visualise how statistical power changes with sample size.
 ggplot(power_by_n, aes(x = n_per_group, y = power)) +
   geom_point() +
-  geom_line() +
+  geom_line(color = "blue") +
   labs(
     title = "Statistical Power as a Function of Sample Size",
     x = "Sample size per condition",
     y = "Statistical power"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 18)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
 ```
