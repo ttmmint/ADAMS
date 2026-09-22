@@ -201,7 +201,10 @@ ggplot(
     x = "Instruction condition",
     y = "Completion time (seconds)"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 20)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
 ```
 
 # 7. Visualize the null dataset
@@ -223,7 +226,10 @@ ggplot(
     x = "Instruction condition",
     y = "Completion time (seconds)"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(title = element_text(size = 20)) +
+  theme(axis.text.x = element_text(size = 10)) +
+  theme(axis.title = element_text(size = 15))
 ```
 
 # 8. Compare the two conditions statistically
