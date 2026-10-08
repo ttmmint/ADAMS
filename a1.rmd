@@ -194,8 +194,8 @@ ggplot(
     y = completion_time
   )
 ) +
-  geom_boxplot(outlier.shape = NA) +
-  geom_jitter(width = 0.15, alpha = 0.6) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.6) +
+  geom_jitter(aes(colour = condition), width = 0.15, alpha = 0.6) +
   labs(
     title = "Simulated Completion Time: True Effect",
     x = "Instruction condition",
@@ -220,7 +220,7 @@ ggplot(
   )
 ) +
   geom_boxplot(outlier.shape = NA) +
-  geom_jitter(width = 0.15, alpha = 0.6) +
+  geom_jitter(aes(colour = condition), width = 0.15, alpha = 0.6) +
   labs(
     title = "Simulated Completion Time: Null Effect",
     x = "Instruction condition",
@@ -307,7 +307,7 @@ p-value vary from study to study, and to estimate the Type I error
 rate, Type II error rate, and statistical power of the test.
 
 # 2. Assumption check
-```{r setup, message=FALSE, warning=FALSE}
+```{r, message=FALSE, warning=FALSE}
 # load the packages for drawing better qqplot
 library(qqplotr)
 ```
@@ -646,12 +646,13 @@ ggplot(alternative_results, aes(x = estimated_effect)) +
     linetype = "dashed"
   ) +
   labs(
-    title = "Distribution of Estimated Effects Across Simulated Studies",
+    title = "Distribution of Estimated Effects 
+    \nUnder Alternative Hypothesis",
     x = "Estimated effect (seconds)",
     y = "Number of simulated studies"
   ) +
   theme_minimal() +
-  theme(title = element_text(size = 15)) +
+  theme(plot.title = element_text(size = 15, hjust = 0.5)) +
   theme(axis.text.x = element_text(size = 10)) +
   theme(axis.title = element_text(size = 15))
 ```
@@ -780,26 +781,29 @@ ggplot(power_by_n, aes(x = n_per_group, y = power)) +
 # Part D: Simulation with QRPs
 
 # 1. Introduction
-# In Part D, two questionable research practices (QRPs) are introduced
-# to examine how they can affect the results of the same simulated study.
-# The two QRPs are outlier removal and rounding down p-values.
+In Part D, two questionable research practices (QRPs) are introduced
+to examine how they can affect the results of the same simulated study.
+The two QRPs are selective reporting between the test of with or without 
+outlier removal; and rounding down p-values.
 
-# The two QRPs are simulated separately. For QRP1, observations identified
-# as outliers using the IQR rule are removed before the Welch two-sample
-# t-test is performed. This QRP was chosen because outliers were observed
-# in the boxplots in Part B. Removing these observations provides a simple
-# way to examine whether excluding unusual values can produce smaller
-# p-values and more statistically significant results.
+The two QRPs are simulated separately. For QRP1, two analyses are performed for each simulated study. 
+First, the original data are analysed using the Welch two-sample t-test. 
+Second, observations identified as potential outliers using the 1.5$\times$IQR rule are removed, 
+and the Welch two-sample t-test is performed again. The two resulting p-values are then compared, 
+and the smaller p-value is selected as the reported result. 
+This QRP was chosen because potential outliers were observed in the boxplots in Part B. 
+Importantly, the questionable practice is not the removal of outliers itself, 
+but the selective reporting of the analysis that produces the more favourable statistical result.
 
-# For QRP2, the original p-values are rounded down to two decimal places
-# and the rounded values are used for significance decisions. This QRP was
-# chosen to examine how changing p-values near the 0.05 significance
-# threshold can increase the number of results classified as significant.
+For QRP2, the original p-values are rounded down to two decimal places
+and the rounded values are used for significance decisions. This QRP was
+chosen to examine how changing p-values near the 0.05 significance
+threshold can increase the number of results classified as significant.
 
-# Each QRP is repeated over 10,000 independently simulated studies under
-# both the alternative and null hypotheses. The results are compared with
-# Part C to examine changes in p-values, estimated effects, Type I error,
-# Type II error, and statistical power.
+Each QRP is repeated over 10,000 independently simulated studies under
+both the alternative and null hypotheses. The results are compared with
+Part C to examine changes in p-values, estimated effects, Type I error,
+Type II error, and statistical power.
 
 
 # 2. QRP-1: Selectively excluding data
@@ -815,8 +819,12 @@ n_studies_qrp <- 10000
 # Create an empty data frame to store the results
 alternative_outlier_results <- tibble(
   study = integer(),
-  p_value = numeric(),
-  estimated_effect = numeric(),
+  p_value_original = numeric(),
+  p_value_outlier = numeric(),
+  p_value_reported = numeric(),
+  estimated_effect_original = numeric(),
+  estimated_effect_outlier = numeric(),
+  estimated_effect_reported = numeric(),
   n_removed = integer()
 )
 
@@ -841,6 +849,27 @@ for (i in 1:n_studies_qrp) {
   text_times <- pmax(text_times, 0)
   demo_times <- pmax(demo_times, 0)
   
+  # Create the original dataset
+  original_data <- tibble(
+    condition = c(
+      rep("Text-only", n_per_group),
+      rep("Text + demonstration", n_per_group)
+    ),
+    completion_time = c(
+      text_times,
+      demo_times
+    )
+  )
+  
+  # Test the original, unprocessed data
+  original_test <- t.test(
+    completion_time ~ condition,
+    data = original_data,
+    alternative = "two.sided"
+  )
+  
+  estimated_effect_original <- mean(demo_times) - mean(text_times)
+  
   # Identify outliers separately within each condition
   text_Q1 <- quantile(text_times, 0.25)
   text_Q3 <- quantile(text_times, 0.75)
@@ -853,26 +882,29 @@ for (i in 1:n_studies_qrp) {
   # Define the outlier boundaries
   text_lower <- text_Q1 - 1.5 * text_IQR
   text_upper <- text_Q3 + 1.5 * text_IQR
-  
   demo_lower <- demo_Q1 - 1.5 * demo_IQR
   demo_upper <- demo_Q3 + 1.5 * demo_IQR
   
   # Remove observations classified as outliers
   text_times_clean <- text_times[
-    text_times >= text_lower & text_times <= text_upper
+    text_times >= text_lower &
+    text_times <= text_upper
   ]
   
   demo_times_clean <- demo_times[
-    demo_times >= demo_lower & demo_times <= demo_upper
+    demo_times >= demo_lower &
+    demo_times <= demo_upper
   ]
   
   # Count the number of removed observations
-  n_removed <- 
-    (length(text_times) - length(text_times_clean)) +
-    (length(demo_times) - length(demo_times_clean))
+  n_removed <- (
+    length(text_times) - length(text_times_clean)
+  ) + (
+    length(demo_times) - length(demo_times_clean)
+  )
   
   # Combine the cleaned data
-  simulated_data <- tibble(
+  outlier_data <- tibble(
     condition = c(
       rep("Text-only", length(text_times_clean)),
       rep("Text + demonstration", length(demo_times_clean))
@@ -884,23 +916,39 @@ for (i in 1:n_studies_qrp) {
   )
   
   # Run the Welch t-test after removing outliers
-  test_result <- t.test(
+  outlier_test <- t.test(
     completion_time ~ condition,
-    data = simulated_data,
+    data = outlier_data,
     alternative = "two.sided"
   )
   
   # Calculate the estimated effect after outlier removal
-  estimated_effect <- 
-    mean(demo_times_clean) - mean(text_times_clean)
+  estimated_effect_outlier <- (
+    mean(demo_times_clean) -
+    mean(text_times_clean)
+  )
+  
+  # Selectively report whichever analysis gives
+  # the smaller p-value
+  if (outlier_test$p.value < original_test$p.value) {
+    reported_p_value <- outlier_test$p.value
+    estimated_effect_reported <- estimated_effect_outlier
+  } else {
+    reported_p_value <- original_test$p.value
+    estimated_effect_reported <- estimated_effect_original
+  }
   
   # Store the results
   alternative_outlier_results <- bind_rows(
     alternative_outlier_results,
     tibble(
       study = i,
-      p_value = test_result$p.value,
-      estimated_effect = estimated_effect,
+      p_value_original = original_test$p.value,
+      p_value_outlier = outlier_test$p.value,
+      p_value_reported = reported_p_value,
+      estimated_effect_original = estimated_effect_original,
+      estimated_effect_outlier = estimated_effect_outlier,
+      estimated_effect_reported = estimated_effect_reported,
       n_removed = n_removed
     )
   )
@@ -913,12 +961,15 @@ for (i in 1:n_studies_qrp) {
 # Create an empty data frame to store the results
 null_outlier_results <- tibble(
   study = integer(),
-  p_value = numeric(),
-  estimated_effect = numeric(),
+  p_value_original = numeric(),
+  p_value_outlier = numeric(),
+  p_value_reported = numeric(),
+  estimated_effect_original = numeric(),
+  estimated_effect_outlier = numeric(),
+  estimated_effect_reported = numeric(),
   n_removed = integer()
 )
 
-# Repeat the complete study many times under the null hypothesis
 for (i in 1:n_studies_qrp) {
   
   # Generate completion times for the Text-only condition
@@ -940,6 +991,27 @@ for (i in 1:n_studies_qrp) {
   text_times <- pmax(text_times, 0)
   demo_times <- pmax(demo_times, 0)
   
+  # Create the original dataset
+  original_data <- tibble(
+    condition = c(
+      rep("Text-only", n_per_group),
+      rep("Text + demonstration", n_per_group)
+    ),
+    completion_time = c(
+      text_times,
+      demo_times
+    )
+  )
+  
+  # Test the original, unprocessed data
+  original_test <- t.test(
+    completion_time ~ condition,
+    data = original_data,
+    alternative = "two.sided"
+  )
+  
+  estimated_effect_original <- mean(demo_times) - mean(text_times)
+  
   # Identify outliers separately within each condition
   text_Q1 <- quantile(text_times, 0.25)
   text_Q3 <- quantile(text_times, 0.75)
@@ -958,20 +1030,24 @@ for (i in 1:n_studies_qrp) {
   
   # Remove observations classified as outliers
   text_times_clean <- text_times[
-    text_times >= text_lower & text_times <= text_upper
+    text_times >= text_lower &
+    text_times <= text_upper
   ]
   
   demo_times_clean <- demo_times[
-    demo_times >= demo_lower & demo_times <= demo_upper
+    demo_times >= demo_lower &
+    demo_times <= demo_upper
   ]
   
   # Count the number of removed observations
-  n_removed <- 
-    (length(text_times) - length(text_times_clean)) +
-    (length(demo_times) - length(demo_times_clean))
+  n_removed <- (
+    length(text_times) - length(text_times_clean)
+  ) + (
+    length(demo_times) - length(demo_times_clean)
+  )
   
   # Combine the cleaned data
-  simulated_data <- tibble(
+  outlier_data <- tibble(
     condition = c(
       rep("Text-only", length(text_times_clean)),
       rep("Text + demonstration", length(demo_times_clean))
@@ -983,23 +1059,37 @@ for (i in 1:n_studies_qrp) {
   )
   
   # Run the Welch t-test after removing outliers
-  test_result <- t.test(
+  outlier_test <- t.test(
     completion_time ~ condition,
-    data = simulated_data,
+    data = outlier_data,
     alternative = "two.sided"
   )
   
   # Calculate the estimated effect after outlier removal
-  estimated_effect <- 
+  estimated_effect_outlier <- 
     mean(demo_times_clean) - mean(text_times_clean)
+  
+  # Selectively report whichever analysis gives
+  # the smaller p-value
+  if (outlier_test$p.value < original_test$p.value) {
+    reported_p_value <- outlier_test$p.value
+    estimated_effect_reported <- estimated_effect_outlier
+  } else {
+    reported_p_value <- original_test$p.value
+    estimated_effect_reported <- estimated_effect_original
+  }
   
   # Store the results
   null_outlier_results <- bind_rows(
     null_outlier_results,
     tibble(
       study = i,
-      p_value = test_result$p.value,
-      estimated_effect = estimated_effect,
+      p_value_original = original_test$p.value,
+      p_value_outlier = outlier_test$p.value,
+      p_value_reported = reported_p_value,
+      estimated_effect_original = estimated_effect_original,
+      estimated_effect_outlier = estimated_effect_outlier,
+      estimated_effect_reported = estimated_effect_reported,
       n_removed = n_removed
     )
   )
@@ -1009,19 +1099,27 @@ for (i in 1:n_studies_qrp) {
 # 2.3 Type I error, Type II error and Power
 
 ```{r}
-# Calculate Type I error after outlier removal
+# Type I error:
+# Under the null hypothesis, this is the proportion of studies
+# in which the selectively reported p-value is significant
 type_I_error_outlier <- mean(
-  null_outlier_results$p_value < 0.05
+  null_outlier_results$p_value_reported < 0.05
 )
 
-# Calculate Type II error after outlier removal
+# Type II error:
+# Under the alternative hypothesis, this is the proportion
+# of studies in which the selectively reported p-value
+# is not significant
 type_II_error_outlier <- mean(
-  alternative_outlier_results$p_value >= 0.05
+  alternative_outlier_results$p_value_reported >= 0.05
 )
 
-# Calculate statistical power after outlier removal
+# Statistical power:
+# Under the alternative hypothesis, this is the proportion
+# of studies in which the selectively reported p-value
+# is significant
 power_outlier <- mean(
-  alternative_outlier_results$p_value < 0.05
+  alternative_outlier_results$p_value_reported < 0.05
 )
 
 type_I_error_outlier
@@ -1061,161 +1159,187 @@ outlier_summary
 # 2.4 P-value distributions
 
 ```{r}
+# Inspect a case of reported p values under alternative hypothesis
+alternative_outlier_results %>%
+  filter(study == 1) %>%
+  select(
+    study,
+    p_value_original,
+    p_value_outlier,
+    p_value_reported
+  )
+```
+
+## Since the p value after outlier removal is lower, we decided to report this one
+
+```{r}
 # Alternative hypothesis
-# Plot the distribution of p-values after outlier removal
-ggplot(alternative_outlier_results, aes(x = p_value)) +
+# Plot the distribution of p-values under original, outlier-removed, and
+# reported analysis
+alternative_p_long <- alternative_outlier_results %>%
+  select(
+    study,
+    p_value_original,
+    p_value_outlier,
+    p_value_reported
+  ) %>%
+  pivot_longer(
+    cols = c(
+      p_value_original,
+      p_value_outlier,
+      p_value_reported
+    ),
+    names_to = "p_value_type",
+    values_to = "p_value"
+  ) %>%
+  mutate(
+    p_value_type = recode(
+      p_value_type,
+      p_value_original = "Original",
+      p_value_outlier = "Outlier-removed",
+      p_value_reported = "Reported"
+    )
+  )
+
+ggplot(
+  alternative_p_long,
+  aes(
+    x = p_value,
+    fill = p_value_type
+  )
+) +
   geom_histogram(
-    bins = 20,
+    binwidth = 0.05,
     boundary = 0,
-    fill = "blue"
+    position = "identity",
+    alpha = 0.4,
+    colour = "white"
   ) +
   geom_vline(
     xintercept = 0.05,
     linetype = "dashed"
   ) +
   labs(
-    title = "Distribution of p-values Under the Alternative Hypothesis\nAfter Outlier Removal",
+    title = "Distribution of Original, Outlier-Removed, and Reported p-values
+    \nUnder the Alternative Hypothesis",
     x = "p-value",
-    y = "Number of simulated studies"
+    y = "Number of simulated studies",
+    fill = "p-value type"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 1, 0.05)
   ) +
   theme_minimal() +
   theme(
     plot.title = element_text(size = 15, hjust = 0.5),
-    axis.text.x = element_text(size = 10),
-    axis.title = element_text(size = 15)
+    plot.subtitle = element_text(size = 13, hjust = 0.5),
+    legend.position = "right"
   )
 ```
 
+
+```{r}
+# Inspect a case of reported p values under null hypothesis
+null_outlier_results %>%
+  filter(study == 1) %>%
+  select(
+    study,
+    p_value_original,
+    p_value_outlier,
+    p_value_reported
+  )
+```
+
+## Since the p value without outlier removal is lower, we decided 
+## to report this one under null hypothesis
 
 ```{r}
 # Null hypothesis
-# Plot the distribution of p-values after outlier removal
-ggplot(null_outlier_results, aes(x = p_value)) +
+# Plot the distribution of p-values under original, outlier-removed, and
+# reported analysis
+null_p_long <- null_outlier_results %>%
+  select(
+    study,
+    p_value_original,
+    p_value_outlier,
+    p_value_reported
+  ) %>%
+  pivot_longer(
+    cols = c(
+      p_value_original,
+      p_value_outlier,
+      p_value_reported
+    ),
+    names_to = "p_value_type",
+    values_to = "p_value"
+  ) %>%
+  mutate(
+    p_value_type = recode(
+      p_value_type,
+      p_value_original = "Original",
+      p_value_outlier = "Outlier-removed",
+      p_value_reported = "Reported"
+    )
+  )
+
+ggplot(
+  null_p_long,
+  aes(
+    x = p_value,
+    fill = p_value_type
+  )
+) +
   geom_histogram(
-    bins = 20,
+    binwidth = 0.05,
     boundary = 0,
-    fill = "blue"
+    position = "identity",
+    alpha = 0.4,
+    colour = "white"
   ) +
   geom_vline(
     xintercept = 0.05,
     linetype = "dashed"
   ) +
   labs(
-    title = "Distribution of p-values Under the Null Hypothesis\nAfter Outlier Removal",
+    title = "Distribution of Original, Outlier-Removed, and Reported p-values
+    \nUnder the Null Hypothesis",
     x = "p-value",
-    y = "Number of simulated studies"
+    y = "Number of simulated studies",
+    fill = "p-value type"
+  ) +
+  scale_x_continuous(
+    breaks = seq(0, 1, 0.05)
   ) +
   theme_minimal() +
   theme(
     plot.title = element_text(size = 15, hjust = 0.5),
-    axis.text.x = element_text(size = 10),
-    axis.title = element_text(size = 15)
+    legend.position = "right"
   )
 ```
 
-# 2.5 Changes in p-values
-```{r}
-# Calculate the change in p-value for each simulated study
-# A negative value means that the p-value become smaller
-# after outlier removal
-alternative_outlier_results <- alternative_outlier_results %>%
-  mutate(
-    p_value_change = p_value - alternative_results$p_value
-  )
-
-null_outlier_results <- null_outlier_results %>%
-  mutate(
-    p_value_change = p_value - null_results$p_value
-  )
-
-# Proportion of studies in which the p-value bocame smaller
-# after outlier removal
-prop_smaller_alt <- mean(
-  alternative_outlier_results$p_value <
-    alternative_results$p_value
-)
-
-prop_smaller_null <- mean(
-  null_outlier_results$p_value <
-    null_results$p_value
-)
-
-# Mean p-value before and after outlier removal
-mean_p_alt_original <- mean(alternative_results$p_value)
-mean_p_alt_outlier <- mean(alternative_outlier_results$p_value)
-
-mean_p_null_original <- mean(null_results$p_value)
-mean_p_null_outlier <- mean(null_outlier_results$p_value)
-
-# Mean change in p-value
-# Negative values indicate that the p-value decreased on average
-mean_change_alt <- mean(alternative_outlier_results$p_value_change)
-mean_change_null <- mean(null_outlier_results$p_value_change)
-
-qpr1_pvalue_summary <- tibble(
-  condition = c("Alternative", "Null"),
-  mean_p_value_Part_C = c(
-    mean_p_alt_original,
-    mean_p_null_original
-  ),
-  mean_p_value_QRP1 = c(
-    mean_p_alt_outlier,
-    mean_p_null_outlier
-  ),
-  proportion_smaller = c(
-    prop_smaller_alt,
-    prop_smaller_null
-  ),
-  mean_change = c(
-    mean_change_alt,
-    mean_change_null
-  )
-)
-
-qpr1_pvalue_summary
-```
-
-```{r}
-# Proportion of studies that were non-significant in Part C
-# but become significant after outlier removal
-
-newly_significant_alt <- mean(
-  alternative_results$p_value >= 0.05 &
-    alternative_outlier_results$p_value < 0.05
-)
-
-newly_significant_null <- mean(
-  null_results$p_value >= 0.05 &
-    null_outlier_results$p_value < 0.05
-)
-
-newly_significant_alt
-newly_significant_null
-```
-
-
-# 2.6 Estimated-effects distributions
+# 2.5 Estimated-effects distributions
 
 ```{r}
 # Alternative distributions
-# Plot the distribution of estimated effects after outlier removal
-ggplot(alternative_outlier_results, aes(x = estimated_effect)) +
+# Plot the distribution of reported estimated effects 
+ggplot(alternative_outlier_results, aes(x = estimated_effect_reported)) +
   geom_histogram(
     bins = 30,
     fill = "blue"
   ) +
   geom_vline(
-    xintercept = -3,
+    xintercept = effect_size,
     linetype = "dashed"
   ) +
   labs(
-    title = "Distribution of Estimated Effects After Outlier Removal",
-    x = "Estimated effect (seconds)",
+    title = "Distribution of Reported Estimated Effects 
+    \nUnder the Alternative Hypothesis",
+    x = "Reported estimated effect (seconds)",
     y = "Number of simulated studies"
   ) +
   theme_minimal() +
   theme(
-    title = element_text(size = 15),
+    plot.title = element_text(size = 15, hjust = 0.5),
     axis.text.x = element_text(size = 10),
     axis.title = element_text(size = 15)
   )
@@ -1223,33 +1347,32 @@ ggplot(alternative_outlier_results, aes(x = estimated_effect)) +
 
 ```{r}
 # Calculate the mean, standard deviation and central 95%
-# of estimated effects after outlier removal
-mean(alternative_outlier_results$estimated_effect)
+# of the reported estimated effects under the alternative hypothesis
+mean(alternative_outlier_results$estimated_effect_reported)
 
-sd(alternative_outlier_results$estimated_effect)
+sd(alternative_outlier_results$estimated_effect_reported)
 
 quantile(
-  alternative_outlier_results$estimated_effect,
+  alternative_outlier_results$estimated_effect_reported,
   c(.025, .975)
 )
 ```
 
 ```{r}
 # Null distributions
-# Plot the distribution of estimated effects under the null
-# hypothesis after outlier removal
-ggplot(null_outlier_results, aes(x = estimated_effect)) +
+# Plot the distribution of reported estimated effects under the null hypothesis
+ggplot(null_outlier_results, aes(x = estimated_effect_reported)) +
   geom_histogram(
     bins = 30,
     fill = "blue"
   ) +
   geom_vline(
-    xintercept = 0,
+    xintercept = null_effect,
     linetype = "dashed"
   ) +
   labs(
-    title = "Distribution of Estimated Effects Under the Null Hypothesis\nAfter Outlier Removal",
-    x = "Estimated effect (seconds)",
+    title = "Distribution of Reported Estimated Effects Under the Null Hypothesis",
+    x = "Reported estimated effect (seconds)",
     y = "Number of simulated studies"
   ) +
   theme_minimal() +
@@ -1258,6 +1381,19 @@ ggplot(null_outlier_results, aes(x = estimated_effect)) +
     axis.text.x = element_text(size = 10),
     axis.title = element_text(size = 15)
   )
+```
+
+```{r}
+# Calculate the mean, standard deviation and central 95%
+# of estimated effects in null hypothesis after outlier removal
+mean(null_outlier_results$estimated_effect_reported)
+
+sd(null_outlier_results$estimated_effect_reported)
+
+quantile(
+  null_outlier_results$estimated_effect_reported,
+  c(.025, .975)
+)
 ```
 
 # 3. QRP-2: Round-down p-values
