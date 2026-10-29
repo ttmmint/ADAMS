@@ -1,0 +1,175 @@
+---
+title: "ADAMS Assignment 2 - Part A"
+subtitle: "Single Pathway Analysis"
+author: "Grp 11"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+# 1. Install packages if necessary
+# install.packages(c("tidyverse", "broom"))
+
+library(tidyverse)
+library(broom)
+library(ggplot2)
+```
+
+```{r}
+# 2. Import the dataset
+# put ur dataset in the same folder as the rmd file
+data <- read.csv("data.csv")
+```
+
+```{r}
+# 3. Inspect the dataset
+head(data)
+str(data)
+dim(data)
+names(data)
+summary(data)
+
+# Check missing values for each variable
+colSums(is.na(data))
+
+# Check duplicate participant IDs
+sum(duplicated(data$ID))
+```
+
+```{r}
+# Rename the Judgment variable as Judgement
+data <- data %>%
+  rename(Judgement = Judgment)
+
+# Check whether values fall within the ranges
+# specified in the assignment
+summary(data$StatsCourses)
+summary(data$GradeStats)
+summary(data$Judgment)
+summary(data$Comprehension)
+
+# Check categorical variables
+table(data$Sexe, useNA = "ifany")
+table(data$GoalStudy, useNA = "ifany")
+```
+
+```{r}
+# 4. Descriptive statistics
+data %>%
+  summarise(
+    n = n(),
+    mean_stats_courses = mean(StatsCourses, na.rm = TRUE),
+    sd_stats_courses = sd(StatsCourses, na.rm = TRUE),
+    mean_judgement = mean(Judgement, na.rm = TRUE),
+    sd_judgement = sd(Judgement, na.rm = TRUE),
+    mean_comprehension = mean(Comprehension, na.rm = TRUE),
+    sd_comprehension = sd(Comprehension, na.rm = TRUE)
+  )
+
+# Distribution of the outcome variable
+ggplot(data, aes(x = Judgement)) +
+  geom_histogram(binwidth = 1, boundary = -0.5) +
+  labs(
+    title = "Distribution of Judgement Scores",
+    x = "Number of correct judgements",
+    y = "Number of participants"
+  ) +
+  theme_minimal()
+
+# Association between statistics credits and judgement
+ggplot(data, aes(x = StatsCourses, y = Judgement)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(
+    title = "Statistics Credits and Fake-News Detection",
+    x = "Statistics course credits (ECs)",
+    y = "Correct judgements"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# 5. Prepare the analysis dataset
+# do not automatically remove participants based on
+# comprehension or guessed study purpose
+# First inspect missingness and justify any exclusions.
+
+analysis_data <- data %>%
+  select(ID, StatsCourses, Judgement, Comprehension) %>%
+  drop_na()
+
+nrow(analysis_data)
+```
+
+```{r}
+# 6. RQ1: Association between statistics credits
+# and the number of correct judgements
+
+model_rq1 <- lm(
+  Judgement ~ StatsCourses,
+  data = analysis_data
+)
+
+summary(model_rq1)
+confint(model_rq1)
+
+# Check basic linear-model diagnostics
+par(mfrow = c(2, 2))
+plot(model_rq1)
+par(mfrow = c(1, 1))
+```
+
+```{r}
+# 7. RQ2: Does comprehension moderate the association?
+# Center the continuous predictors to aid interpretation
+
+analysis_data <- analysis_data %>%
+  mutate(
+    StatsCourses_c = StatsCourses - mean(StatsCourses),
+    Comprehension_c = Comprehension - mean(Comprehension)
+  )
+
+model_rq2 <- lm(
+  Judgement ~ StatsCourses_c * Comprehension_c,
+  data = analysis_data
+)
+
+summary(model_rq2)
+confint(model_rq2)
+
+# Inspect the interaction visually
+ggplot(
+  analysis_data,
+  aes(
+    x = StatsCourses,
+    y = Judgement,
+    color = factor(
+      if_else(Comprehension >= median(Comprehension),
+              "Higher comprehension", "Lower comprehension")
+    )
+  )
+) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(
+    x = "Statistics course credits (ECs)",
+    y = "Correct judgements",
+    color = "Comprehension group"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# 8. Extract model estimates for reporting
+
+tidy(model_rq1, conf.int = TRUE)
+tidy(model_rq2, conf.int = TRUE)
+
+glance(model_rq1)
+glance(model_rq2)
+```
