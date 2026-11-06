@@ -1,5 +1,5 @@
 ---
-title: "ADAMS Assignment 2 - Part A"
+title: "ADAMS Assignment 2 - Part B"
 subtitle: "Single Pathway Analysis"
 author: "Grp 11"
 date: "`r Sys.Date()`"
@@ -47,11 +47,13 @@ sum(duplicated(data$ID))
 data <- data %>%
   rename(Judgement = Judgment)
 nrow(data)
+#Remove correctly guessed goal
 data <- data %>%
-  filter(data$GoalStudy != 1)
+  filter(GoalStudy != 1)
 nrow(data)
+#Remove not passing average
 data <- data %>%
-  filter(data$GradeStats >= 6.0)
+  filter(GradeStats >= 6.0)
 nrow(data)
 
 # Check whether values fall within the ranges
@@ -103,9 +105,6 @@ ggplot(data, aes(x = StatsCourses, y = Judgement)) +
 
 ```{r}
 # 5. Prepare the analysis dataset
-# do not automatically remove participants based on
-# comprehension or guessed study purpose
-# First inspect missingness and justify any exclusions.
 
 analysis_data <- data %>%
   select(ID, StatsCourses, Judgement, Comprehension, ReadNews) %>%
@@ -139,11 +138,12 @@ par(mfrow = c(1, 1))
 analysis_data <- analysis_data %>%
   mutate(
     StatsCourses_c = StatsCourses - mean(StatsCourses),
-    Comprehension_c = Comprehension - mean(Comprehension)
+    Comprehension_c = Comprehension - mean(Comprehension),
+    ReadNews
   )
 
 model_rq2 <- lm(
-  Judgement ~ StatsCourses_c * Comprehension_c,
+  Judgement ~ StatsCourses_c * Comprehension_c + ReadNews,
   data = analysis_data
 )
 
