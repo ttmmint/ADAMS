@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-```{r}
+```{r, warning=FALSE}
 # 1. Install packages if necessary
 # install.packages(c("tidyverse", "broom"))
 
@@ -43,24 +43,11 @@ sum(duplicated(data$ID))
 ```
 
 ```{r}
-# Rename the Judgment variable as Judgement
-data <- data %>%
-  rename(Judgement = Judgment)
-nrow(data)
-#Remove correctly guessed goal
-data <- data %>%
-  filter(GoalStudy != 1)
-nrow(data)
-#Remove not passing average
-data <- data %>%
-  filter(GradeStats >= 6.0)
-nrow(data)
-
 # Check whether values fall within the ranges
 # specified in the assignment
 summary(data$StatsCourses)
 summary(data$GradeStats)
-summary(data$Judgement)
+summary(data$Judgment)
 summary(data$Comprehension)
 
 # Check categorical variables
@@ -75,14 +62,14 @@ data %>%
     n = n(),
     mean_stats_courses = mean(StatsCourses, na.rm = TRUE),
     sd_stats_courses = sd(StatsCourses, na.rm = TRUE),
-    mean_judgement = mean(Judgement, na.rm = TRUE),
-    sd_judgement = sd(Judgement, na.rm = TRUE),
+    mean_judgment = mean(Judgment, na.rm = TRUE),
+    sd_judgment = sd(Judgment, na.rm = TRUE),
     mean_comprehension = mean(Comprehension, na.rm = TRUE),
     sd_comprehension = sd(Comprehension, na.rm = TRUE)
   )
 
 # Distribution of the outcome variable
-ggplot(data, aes(x = Judgement)) +
+ggplot(data, aes(x = Judgment)) +
   geom_histogram(binwidth = 1, boundary = -0.5) +
   labs(
     title = "Distribution of Judgement Scores",
@@ -92,7 +79,7 @@ ggplot(data, aes(x = Judgement)) +
   theme_minimal()
 
 # Association between statistics credits and judgement
-ggplot(data, aes(x = StatsCourses, y = Judgement)) +
+ggplot(data, aes(x = StatsCourses, y = Judgment)) +
   geom_point() +
   geom_smooth(method = "lm", se = TRUE) +
   labs(
@@ -105,9 +92,8 @@ ggplot(data, aes(x = StatsCourses, y = Judgement)) +
 
 ```{r}
 # 5. Prepare the analysis dataset
-
 analysis_data <- data %>%
-  select(ID, StatsCourses, Judgement, Comprehension, ReadNews) %>%
+  select(ID, StatsCourses, Judgment, Comprehension, ReadNews) %>%
   drop_na()
 
 nrow(analysis_data)
@@ -118,7 +104,7 @@ nrow(analysis_data)
 # and the number of correct judgements
 
 model_rq1 <- lm(
-  Judgement ~ StatsCourses + ReadNews,
+  Judgment ~ StatsCourses + ReadNews,
   data = analysis_data
 )
 
@@ -143,7 +129,7 @@ analysis_data <- analysis_data %>%
   )
 
 model_rq2 <- lm(
-  Judgement ~ StatsCourses_c * Comprehension_c + ReadNews,
+  Judgment ~ StatsCourses_c * Comprehension_c + ReadNews,
   data = analysis_data
 )
 
@@ -155,7 +141,7 @@ ggplot(
   analysis_data,
   aes(
     x = StatsCourses,
-    y = Judgement,
+    y = Judgment,
     color = factor(
       if_else(Comprehension >= median(Comprehension),
               "Higher comprehension", "Lower comprehension")
