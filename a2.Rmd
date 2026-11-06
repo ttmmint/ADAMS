@@ -1,6 +1,6 @@
 ---
-title: "ADAMS Assignment 2 - Part A"
-subtitle: "Single Pathway Analysis"
+title: "ADAMS Assignment 2 - Part A and Part B"
+subtitle: "Single Pathway Analysis, Checking Computational Reproducibility"
 author: "Grp 11"
 date: "`r Sys.Date()`"
 output: html_document
@@ -10,24 +10,28 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-
 ```{r}
-# 1. Install packages if necessary
-# install.packages(c("tidyverse", "broom"))
+# Install packages if necessary
+# install.packages(c("tidyverse", "broom", "ggplot2", "car", "interactions", "psych", "lmtest"))
 
 library(tidyverse)
 library(broom)
 library(ggplot2)
+library(car)
+library(interactions)
+library(psych)
+library(lmtest)
 ```
 
 ```{r}
-# 2. Import the dataset
+# Import the dataset
 # put ur dataset in the same folder as the rmd file
 data <- read.csv("data.csv")
 ```
 
+## Part A: Single Pathway Analysis
+### 1. Inspect the dataset
 ```{r}
-# 3. Inspect the dataset
 head(data)
 str(data)
 dim(data)
@@ -42,10 +46,6 @@ sum(duplicated(data$ID))
 ```
 
 ```{r}
-# Rename the Judgment variable as Judgement
-data <- data %>%
-  rename(Judgement = Judgment)
-
 # Check whether values fall within the ranges
 # specified in the assignment
 summary(data$StatsCourses)
@@ -58,21 +58,21 @@ table(data$Sexe, useNA = "ifany")
 table(data$GoalStudy, useNA = "ifany")
 ```
 
+### 2. Descriptive Statistics
 ```{r}
-# 4. Descriptive statistics
 data %>%
   summarise(
     n = n(),
     mean_stats_courses = mean(StatsCourses, na.rm = TRUE),
     sd_stats_courses = sd(StatsCourses, na.rm = TRUE),
-    mean_judgement = mean(Judgement, na.rm = TRUE),
-    sd_judgement = sd(Judgement, na.rm = TRUE),
+    mean_judgment = mean(Judgment, na.rm = TRUE),
+    sd_judgment = sd(Judgment, na.rm = TRUE),
     mean_comprehension = mean(Comprehension, na.rm = TRUE),
     sd_comprehension = sd(Comprehension, na.rm = TRUE)
   )
 
 # Distribution of the outcome variable
-ggplot(data, aes(x = Judgement)) +
+ggplot(data, aes(x = Judgment)) +
   geom_histogram(binwidth = 1, boundary = -0.5) +
   labs(
     title = "Distribution of Judgement Scores",
@@ -82,7 +82,7 @@ ggplot(data, aes(x = Judgement)) +
   theme_minimal()
 
 # Association between statistics credits and judgement
-ggplot(data, aes(x = StatsCourses, y = Judgement)) +
+ggplot(data, aes(x = StatsCourses, y = Judgment)) +
   geom_point() +
   geom_smooth(method = "lm", se = TRUE) +
   labs(
@@ -93,25 +93,26 @@ ggplot(data, aes(x = StatsCourses, y = Judgement)) +
   theme_minimal()
 ```
 
+### 3. Prepare the analysis dataset
 ```{r}
-# 5. Prepare the analysis dataset
 # do not automatically remove participants based on
 # comprehension or guessed study purpose
 # First inspect missingness and justify any exclusions.
 
 analysis_data <- data %>%
-  select(ID, StatsCourses, Judgement, Comprehension) %>%
+  select(ID, StatsCourses, Judgment, Comprehension) %>%
   drop_na()
 
 nrow(analysis_data)
 ```
 
+### 4. RQ1
 ```{r}
-# 6. RQ1: Association between statistics credits
+# Association between statistics credits
 # and the number of correct judgements
 
 model_rq1 <- lm(
-  Judgement ~ StatsCourses,
+  Judgment ~ StatsCourses,
   data = analysis_data
 )
 
@@ -124,8 +125,9 @@ plot(model_rq1)
 par(mfrow = c(1, 1))
 ```
 
+### 5. RQ2
 ```{r}
-# 7. RQ2: Does comprehension moderate the association?
+# Does comprehension moderate the association?
 # Center the continuous predictors to aid interpretation
 
 analysis_data <- analysis_data %>%
@@ -135,7 +137,7 @@ analysis_data <- analysis_data %>%
   )
 
 model_rq2 <- lm(
-  Judgement ~ StatsCourses_c * Comprehension_c,
+  Judgment ~ StatsCourses_c * Comprehension_c,
   data = analysis_data
 )
 
@@ -147,7 +149,7 @@ ggplot(
   analysis_data,
   aes(
     x = StatsCourses,
-    y = Judgement,
+    y = Judgment,
     color = factor(
       if_else(Comprehension >= median(Comprehension),
               "Higher comprehension", "Lower comprehension")
@@ -173,3 +175,192 @@ tidy(model_rq2, conf.int = TRUE)
 glance(model_rq1)
 glance(model_rq2)
 ```
+
+## Part 2: Check Computational Reproducitibility
+### 1. Inspect the dataset
+```{r}
+# Check how many participants are in each category
+table(data$GoalStudy)
+
+# Check statistics grades
+summary(data$GradeStats)
+```
+
+### 2. Prepare the dataset, one with 5.5 as the passing-grade threshold,
+### another one with 6.0
+```{r}
+# Remove participants who guessed the study goal
+# and participants with a non-passing statistics grade
+
+clean_data_1 <- data %>%
+  filter(GoalStudy == 0,
+         GradeStats >= 5.5)
+
+# Check remaining sample size
+nrow(clean_data_1)
+
+# Check the cleaned dataset
+summary(clean_data_1)
+```
+
+```{r}
+# Try 6.0 as the passing grade
+clean_data_2 <- data %>%
+  filter(GoalStudy == 0,
+         GradeStats >= 6.0)
+
+# Check remaining sample size
+nrow(clean_data_2)
+
+# Check the cleaned dataset
+summary(clean_data_2)
+```
+
+```{r}
+# Check how many people is removed
+nrow(data) - nrow(clean_data_1)
+nrow(data) - nrow(clean_data_2)
+```
+
+### 3. Descriptive Statistics
+```{r}
+# Descriptive statistics
+describe(clean_data_1[, c("StatsCourses",
+                        "GradeStats",
+                        "ReadNews",
+                        "Judgment",
+                        "Comprehension")])
+
+# Correlation matrix
+cor(clean_data_1[, c("StatsCourses",
+                   "ReadNews",
+                   "Judgment",
+                   "Comprehension")],
+    use = "complete.obs")
+```
+
+```{r}
+# Descriptive statistics
+describe(clean_data_2[, c("StatsCourses",
+                        "GradeStats",
+                        "ReadNews",
+                        "Judgment",
+                        "Comprehension")])
+
+# Correlation matrix
+cor(clean_data_2[, c("StatsCourses",
+                   "ReadNews",
+                   "Judgment",
+                   "Comprehension")],
+    use = "complete.obs")
+```
+
+### 4. rq1
+```{r}
+# Model 1.2: Linear regression with 5.5 as passing grade
+
+model1_1 <- lm(Judgment ~ StatsCourses + ReadNews,
+             data = clean_data_1)
+
+# View results
+summary(model1_1)
+```
+
+```{r}
+# Model 1: Linear regression with 6.0 as passing grade
+
+model1_2 <- lm(Judgment ~ StatsCourses + ReadNews,
+             data = clean_data_2)
+
+# View results
+summary(model1_2)
+```
+
+## 5. rq2
+```{r}
+# Mean-centering
+clean_data_1 <- clean_data_1 %>%
+  mutate(
+    StatsCourses_c = StatsCourses - mean(StatsCourses, na.rm = TRUE),
+    Comprehension_c = Comprehension - mean(Comprehension, na.rm = TRUE)
+  )
+clean_data_2 <- clean_data_2 %>%
+  mutate(
+    StatsCourses_c = StatsCourses - mean(StatsCourses, na.rm = TRUE),
+    Comprehension_c = Comprehension - mean(Comprehension, na.rm = TRUE)
+  )
+```
+
+```{r}
+# Model 2.1: Moderation analysis with 5.5 as passing grade
+
+model2_1 <- lm(Judgment ~ StatsCourses_c * Comprehension_c +
+               ReadNews,
+             data = clean_data_1)
+
+# View results
+summary(model2_1)
+```
+
+```{r}
+# Model 2.2: Moderation analysis with 6.0 as passing grade
+
+model2_2 <- lm(Judgment ~ StatsCourses_c * Comprehension_c +
+               ReadNews,
+             data = clean_data_2)
+
+# View results
+summary(model2_2)
+```
+
+```{r}
+# Plot interaction
+
+interact_plot(
+  model2_1,
+  pred = StatsCourses_c,
+  modx = Comprehension_c,
+  plot.points = TRUE,
+  interval = TRUE,
+  x.label = "Statistics course credits",
+  y.label = "Fake news detection ability",
+  modx.label = "Reading comprehension"
+)
+
+interact_plot(
+  model2_2,
+  pred = StatsCourses_c,
+  modx = Comprehension_c,
+  plot.points = TRUE,
+  interval = TRUE,
+  x.label = "Statistics course credits",
+  y.label = "Fake news detection ability",
+  modx.label = "Reading comprehension"
+)
+```
+
+### 6. Regression assumptions check
+```{r}
+# Linearity
+plot(model2_1, which=1)
+plot(model2_2, which=1)
+```
+
+```{r}
+# Normality of residuals
+plot(model2_1, which=2)
+plot(model2_1, which=2)
+```
+
+```{r}
+# Homoscedasticity
+bptest(model2_1)
+bptest(model2_2)
+```
+
+```{r}
+# Multicollinearity
+vif(model2_1)
+vif(model2_2)
+```
+
