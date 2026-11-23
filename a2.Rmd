@@ -10,7 +10,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r}
+```{r warning=FALSE}
 # Install packages if necessary
 # install.packages(c("tidyverse", "broom", "ggplot2", "car", "interactions", "psych", "lmtest"))
 
@@ -21,12 +21,12 @@ library(car)
 library(interactions)
 library(psych)
 library(lmtest)
+library(patchwork)
 ```
 
 ```{r}
 # Import the dataset
-# put ur dataset in the same folder as the rmd file
-data <- read.csv("data.csv")
+data <- read.csv("A1_data.csv")
 ```
 
 ## Part A: Single Pathway Analysis
@@ -176,14 +176,35 @@ glance(model_rq1)
 glance(model_rq2)
 ```
 
-## Part 2: Check Computational Reproducitibility
+## Part B: Check Computational Reproducitibility
 ### 1. Inspect the dataset
 ```{r}
-# Check how many participants are in each category
-table(data$GoalStudy)
+a2_data <- read.csv("A2_data.csv")
 
-# Check statistics grades
-summary(data$GradeStats)
+head(a2_data)
+str(a2_data)
+dim(a2_data)
+names(a2_data)
+summary(a2_data)
+
+# Check missing values for each variable
+colSums(is.na(a2_data))
+
+# Check duplicate participant IDs
+sum(duplicated(a2_data$ID))
+
+# Check whether values fall within the ranges
+# specified in the assignment
+summary(a2_data$StatsCourses)
+summary(a2_data$GradeStats)
+summary(a2_data$Judgment)
+summary(a2_data$Comprehension)
+summary(a2_data$GradeStats)
+summary(a2_data$ReadNews)
+
+# Check categorical variable
+# Check how many participants are in each category
+table(a2_data$GoalStudy)
 ```
 
 ### 2. Prepare the dataset, one with 5.5 as the passing-grade threshold,
@@ -192,7 +213,7 @@ summary(data$GradeStats)
 # Remove participants who guessed the study goal
 # and participants with a non-passing statistics grade
 
-clean_data_1 <- data %>%
+clean_data_1 <- a2_data %>%
   filter(GoalStudy == 0,
          GradeStats >= 5.5)
 
@@ -205,7 +226,7 @@ summary(clean_data_1)
 
 ```{r}
 # Try 6.0 as the passing grade
-clean_data_2 <- data %>%
+clean_data_2 <- a2_data %>%
   filter(GoalStudy == 0,
          GradeStats >= 6.0)
 
@@ -218,8 +239,8 @@ summary(clean_data_2)
 
 ```{r}
 # Check how many people is removed
-nrow(data) - nrow(clean_data_1)
-nrow(data) - nrow(clean_data_2)
+nrow(a2_data) - nrow(clean_data_1)
+nrow(a2_data) - nrow(clean_data_2)
 ```
 
 ### 3. Descriptive Statistics
@@ -365,181 +386,139 @@ vif(model2_2)
 ```
 
 ## Part D: Conducting the Multiverse Analysis
-### 1. Define the decisions and their options
 ```{r}
-# Each decision in the multiverse is one argument of the pipeline.
-# The options for each decision are listed here:
-#
-# D2 Grade:          keep all / exclude below 5.5 / exclude below 6.0
-# D3 Comprehension:  keep all / exclude <= 7 (chance) / exclude <= 10 (not significantly above chance) / keep all, but add Comprehension as a predictor
-# D5 Controls:       none / ReadNews / ReadNews + Age + Sexe
+dat <- read.csv("A1_data.csv")   
+str(dat)
+```
+Check that the exclusion counts in our decision list:
 
-multiverse_options <- expand_grid(
-  grade         = c("keep", "5.5", "6.0"),
-  comprehension = c("keep", "exclude_7", "exclude_10", "covariate"),
-  controls      = c("none", "readnews", "demographic")
+```{r}
+c(goal    = sum(dat$GoalStudy == 1),
+  grade55 = sum(dat$GradeStats < 5.5),
+  grade60 = sum(dat$GradeStats < 6.0),
+  comp7   = sum(dat$Comprehension <= 7),
+  comp10  = sum(dat$Comprehension <= 10))
+```
+
+## The multiverse
+
+Every row of `grid` is one pathway: 2 × 3 × 4 × 3 = 72 combinations.
+
+```{r}
+grid <- expand.grid(
+  goal  = c("Keep", "Exclude"),
+  grade = c("Keep all", "< 5.5", "< 6.0"),
+  comp  = c("Keep all", "<= 7", "<= 10", "Covariate"),
+  covs  = c("None", "ReadNews", "ReadNews + Sexe"),
+  stringsAsFactors = FALSE
 )
-
-# Number of pathways: 3 x 4 x 3 = 36
-nrow(multiverse_options)
+nrow(grid)
 ```
 
-### 2. Data-processing functions
+`run_path()` takes the four choices, applies the exclusions (D1–D3),
+builds the regression formula (D3 covariate option + D4) and returns the
+estimate for StatsCourses. Comprehension only enters the model through D3,
+so it can never be added twice.
+
 ```{r}
-# D2: remove participants whose average statistics grade is below the passing threshold
-filter_grade <- function(df, grade) {
-  if (grade == "keep") return(df)
-  df %>% filter(GradeStats >= as.numeric(grade))
+run_path <- function(goal, grade, comp, covs) {
+  d <- dat
+  if (goal == "Exclude") d <- d[d$GoalStudy == 0, ]
+  if (grade == "< 5.5")  d <- d[d$GradeStats >= 5.5, ]
+  if (grade == "< 6.0")  d <- d[d$GradeStats >= 6.0, ]
+  if (comp == "<= 7")    d <- d[d$Comprehension > 7, ]
+  if (comp == "<= 10")   d <- d[d$Comprehension > 10, ]
+
+  predictors <- c("StatsCourses",
+                  if (comp == "Covariate") "Comprehension",
+                  if (covs != "None") "ReadNews",
+                  if (covs == "ReadNews + Sexe") "Sexe")
+  fit <- lm(reformulate(predictors, response = "Judgment"), data = d)
+
+  ci <- confint(fit)["StatsCourses", ]
+  data.frame(n        = nobs(fit),
+             estimate = coef(fit)[["StatsCourses"]],
+             lower    = ci[[1]],
+             upper    = ci[[2]],
+             p        = summary(fit)$coefficients["StatsCourses", "Pr(>|t|)"])
 }
 
-# D3: attention check. "Covariate" added in D5
-filter_comprehension <- function(df, comprehension) {
-  if (comprehension == "exclude_7")  return(df %>% filter(Comprehension > 7))
-  if (comprehension == "exclude_10") return(df %>% filter(Comprehension > 10))
-  df
+results <- cbind(grid, do.call(rbind, Map(run_path, grid$goal, grid$grade,
+                                          grid$comp, grid$covs)))
+rownames(results) <- NULL
+```
+
+## Summary
+
+The estimate is the change in correct judgements per extra credit (EC).
+The research question is directional, so we count a pathway as support when
+the estimate is positive and p < .05 (two-sided, which is conservative).
+
+```{r}
+results$support <- results$estimate > 0 & results$p < .05
+
+c(pathways      = nrow(results),
+  share_support = mean(results$support),
+  median_est    = median(results$estimate),
+  min_est       = min(results$estimate),
+  max_est       = max(results$estimate),
+  min_n         = min(results$n),
+  max_n         = max(results$n))
+```
+
+Median estimate per option, to see which decision moves the result most.
+
+```{r}
+for (d in c("goal", "grade", "comp", "covs")) {
+  print(tapply(results$estimate, results[[d]], median))
 }
-
 ```
 
-### 3. Analysis functions
-```{r}
-# D3 + D5: build the regression formula. 
-build_formula <- function(comprehension, controls) {
-  predictors <- "StatsCourses"
-  if (controls == "readnews")    predictors <- c(predictors, "ReadNews")
-  if (controls == "demographic") predictors <- c(predictors, "ReadNews", "Age", "Sexe")
-  if (comprehension == "covariate") predictors <- c(predictors, "Comprehension")
-  as.formula(paste("Judgment ~", paste(predictors, collapse = " + ")))
-}
+## Specification curve
 
-# Run one complete pathway: apply the data-processing steps in a fixed order (D2 -> D3)
-run_pathway <- function(grade, comprehension, controls) {
-  df <- data %>%
-    filter_grade(grade) %>%
-    filter_comprehension(comprehension)
+Top: the 72 estimates sorted from small to large, with 95% CIs.
+Bottom: which choice each pathway made for each decision.
 
-  model <- lm(build_formula(comprehension, controls), data = df)
-  est   <- tidy(model, conf.int = TRUE) %>% filter(term == "StatsCourses")
+```{r, fig.width = 10, fig.height = 8}
+results <- results[order(results$estimate), ]
+results$rank <- seq_len(nrow(results))
 
-  tibble(
-    n         = nrow(df),
-    estimate  = est$estimate,
-    conf.low  = est$conf.low,
-    conf.high = est$conf.high,
-    t         = est$statistic,
-    p_one     = pt(est$statistic, df = model$df.residual, lower.tail = FALSE)
-  )
-}
-#Check original data
-run_pathway("keep", "keep", "none")
-```
-
-### 4. Run all pathways
-```{r}
-# pmap() calls run_pathway() once for every row of multiverse_options,
-# using the column names as argument names
-results <- multiverse_options %>%
-  mutate(output = pmap(multiverse_options, run_pathway)) %>%
-  unnest(output) %>%
-  mutate(
-    significant = p_one < 0.05,
-    pathway     = row_number()
-  )
-
-results
-```
-
-### 5. Summarise the multiverse
-```{r}
-# Summary statistics from the lecture: proportion of significant
-# p-values, arithmetic mean and harmonic mean of the p-values
-results %>%
-  summarise(
-    n_pathways        = n(),
-    prop_significant  = mean(significant),
-    mean_p            = mean(p_one),
-    harmonic_mean_p   = n() / sum(1 / p_one),
-    median_estimate   = median(estimate),
-    min_estimate      = min(estimate),
-    max_estimate      = max(estimate)
-  )
-
-# Proportion of significant pathways per option of each decision
-results %>%
-  pivot_longer(c(grade, comprehension, controls),
-               names_to = "decision", values_to = "option") %>%
-  group_by(decision, option) %>%
-  summarise(prop_significant = mean(significant),
-            mean_estimate = mean(estimate), .groups = "drop")
-```
-
-### 6. Importance of each decision (Sobol first-order effects)
-```{r}
-# For each decision, regress the estimates of all pathways on that
-# decision alone. The R^2 is the proportion of variance in the
-# estimates explained by that decision.
-decisions <- c("grade", "comprehension", "controls")
-
-sobol <- tibble(
-  decision = decisions,
-  r_squared = map_dbl(decisions, function(dec) {
-    summary(lm(as.formula(paste("estimate ~", dec)), data = results))$r.squared
-  })
-)
-
-sobol
-
-ggplot(sobol, aes(x = reorder(decision, -r_squared), y = r_squared)) +
-  geom_col(fill = "grey70", colour = "black") +
-  labs(x = "Decision", y = "Proportion of variance explained") +
-  theme_minimal()
-```
-
-### 7. Visualise the results
-```{r}
-# Specification curve: pathways sorted by their estimate, with the 95% CI.
-# Filled points are significant (one-sided p < .05).
-results_sorted <- results %>%
-  arrange(estimate) %>%
-  mutate(rank = row_number(),
-         is_partA = grade == "keep" & comprehension == "keep" & controls == "none")
-
-spec_curve <- ggplot(results_sorted, aes(x = rank, y = estimate)) +
+top <- ggplot(results, aes(rank, estimate, colour = support)) +
   geom_hline(yintercept = 0, linetype = "dashed") +
-  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), colour = "grey70") +
-  geom_point(aes(colour = significant), size = 2) +
-  geom_point(data = filter(results_sorted, is_partA),
-             shape = 21, size = 4, stroke = 1.2) +
-  scale_colour_manual(values = c(`TRUE` = "#1f5fbf", `FALSE` = "grey50"),
-                      labels = c(`TRUE` = "p < .05", `FALSE` = "p >= .05")) +
-  labs(x = "Pathway (sorted by estimate)",
-       y = "Estimate of StatsCourses (b)",
-       colour = NULL) +
-  theme_minimal()
+  geom_pointrange(aes(ymin = lower, ymax = upper), size = 0.2) +
+  scale_colour_manual(values = c("TRUE" = "#4472C4", "FALSE" = "grey60"),
+                      breaks = c("TRUE", "FALSE"),
+                      labels = c("positive, p < .05", "not significant"),
+                      name = NULL) +
+  labs(x = NULL, y = "Estimate for StatsCourses") +
+  theme_minimal() +
+  theme(legend.position = "top", axis.text.x = element_blank())
 
-# Lower panel: which option each pathway used
-spec_panel <- results_sorted %>%
-  pivot_longer(c(grade, comprehension, controls),
-               names_to = "decision", values_to = "option") %>%
-  ggplot(aes(x = rank, y = option, colour = significant)) +
-  geom_point(shape = 15, size = 1.5) +
+choices <- data.frame(
+  rank     = rep(results$rank, 4),
+  decision = rep(c("D1 Goal", "D2 Grade", "D3 Comprehension", "D5 Covariates"),
+                 each = nrow(results)),
+  choice   = c(results$goal, results$grade, results$comp, results$covs)
+)
+
+bottom <- ggplot(choices, aes(rank, choice)) +
+  geom_point(shape = "|", size = 3) +
   facet_grid(decision ~ ., scales = "free_y", space = "free_y") +
-  scale_colour_manual(values = c(`TRUE` = "#1f5fbf", `FALSE` = "grey50"),
-                      guide = "none") +
   labs(x = "Pathway (sorted by estimate)", y = NULL) +
-  theme_minimal()
+  theme_minimal() +
+  theme(strip.text.y = element_text(angle = 0))
 
+top / bottom + plot_layout(heights = c(2, 3))
+# save plot
+spec_curve <- top / bottom + plot_layout(heights = c(2, 3))
 spec_curve
-spec_panel
-
-# Histogram of the one-sided p-values
-p_hist <- ggplot(results, aes(x = p_one)) +
-  geom_histogram(binwidth = 0.025, boundary = 0,
-                 fill = "grey70", colour = "black") +
-  geom_vline(xintercept = 0.05, linetype = "dashed", colour = "red") +
-  labs(x = "One-sided p-value", y = "Number of pathways") +
-  theme_minimal()
-
-p_hist
-
+ggsave("specification_curve.pdf", spec_curve, width = 10, height = 8)
 ```
+
+## All results
+```{r}
+print(results)
+```
+
+
+
