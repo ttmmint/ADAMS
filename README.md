@@ -16,6 +16,7 @@ in science news? This repository contains the single-pathway analyses
 | `multiverse_results.csv` | Results of the 72 pathways, written by `a2.Rmd` |
 | `multiverse_fig.py` | Draws the pathway diagrams from `multiverse_results.csv` |
 | `figures/` | Figures used in the report |
+| `report/` | Reports for each phase
 
 ## Run
 
