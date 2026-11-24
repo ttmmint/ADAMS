@@ -1,4 +1,5 @@
 import itertools
+import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse, Rectangle
 
@@ -10,10 +11,15 @@ decisions = {
     "D2 Stats grade": ["Keep all", "Exclude < 5.5\n(n = 25)", "Exclude < 6.0\n(n = 54)"],
     "D3 Comprehension": ["Keep all", "Exclude ≤ 7\n(n = 4)", "Exclude ≤ 10\n(n = 37)",
                          "Keep all +\ncovariate"],
-    "D5 Covariates": ["None", "ReadNews", "ReadNews\n+ Sexe"],
+    "D4 Covariates": ["None", "ReadNews", "ReadNews\n+ Sexe"],
 }
 short = [["Keep", "Excl."], ["Keep", "<5.5", "<6.0"],
          ["Keep", "≤7", "≤10", "Cov."], ["None", "RN", "RN+S"]]
+
+# the same options as they are coded in the R results
+codes = [["Keep", "Exclude"], ["Keep all", "< 5.5", "< 6.0"],
+         ["Keep all", "<= 7", "<= 10", "Covariate"],
+         ["None", "ReadNews", "ReadNews + Sexe"]]
 
 
 def node(ax, x, y, text, w=1.5, h=0.75, fs=9):
@@ -51,7 +57,9 @@ def lattice(path):
     fig.savefig(path, dpi=300, bbox_inches="tight")
 
 
-def full_tree(path):
+def full_tree(path, results_file):
+    results = pd.read_csv(results_file, keep_default_na=False)
+    results = results.set_index(["goal", "grade", "comp", "covs"])
     leaves = list(itertools.product(*[range(len(o)) for o in decisions.values()]))
     fig, ax = plt.subplots(figsize=(13, 17))
 
@@ -70,10 +78,14 @@ def full_tree(path):
                 node(ax, xs[depth], y, options[prefix[-1]], w=1.35, h=1.4, fs=7)
     raw_data(ax, y_of(()), h=1.6)
 
+    # right column: sample size and p-value of each pathway (blue if p < .05)
+    ax.text(10.05, 0.9, "      N      p", fontsize=7, family="monospace",
+            fontweight="bold")
     for i, p in enumerate(leaves):
-        label = " · ".join(short[d][p[d]] for d in range(4))
-        ax.text(10.05, -i, f"{i + 1:>2}. {label}", va="center", fontsize=7,
-                family="monospace")
+        row = results.loc[tuple(codes[d][p[d]] for d in range(4))]
+        colour = BLUE if row["p"] < .05 else "grey"
+        ax.text(10.05, -i, f"{i + 1:>2}.  {int(row['n']):>3}  {row['p']:.3f}",
+                va="center", fontsize=7, family="monospace", color=colour)
     for x, name in zip(xs[1:], decisions):
         ax.text(x, 1.5, name, ha="center", fontsize=10, fontweight="bold")
     ax.set_xlim(-1, 12.6)
@@ -84,4 +96,4 @@ def full_tree(path):
 
 if __name__ == "__main__":
     lattice("multiverse_lattice.png")
-    full_tree("multiverse_full_tree.png")
+    full_tree("multiverse_full_tree.png", "multiverse_results.csv")

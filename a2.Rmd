@@ -446,6 +446,8 @@ run_path <- function(goal, grade, comp, covs) {
 results <- cbind(grid, do.call(rbind, Map(run_path, grid$goal, grid$grade,
                                           grid$comp, grid$covs)))
 rownames(results) <- NULL
+
+write.csv(results, "multiverse_results.csv", row.names = FALSE)
 ```
 
 ## Summary
@@ -496,7 +498,7 @@ top <- ggplot(results, aes(rank, estimate, colour = support)) +
 
 choices <- data.frame(
   rank     = rep(results$rank, 4),
-  decision = rep(c("D1 Goal", "D2 Grade", "D3 Comprehension", "D5 Covariates"),
+  decision = rep(c("D1 Goal", "D2 Grade", "D3 Comprehension", "D4 Covariates"),
                  each = nrow(results)),
   choice   = c(results$goal, results$grade, results$comp, results$covs)
 )
